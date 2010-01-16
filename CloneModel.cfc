@@ -24,39 +24,48 @@
 	</cffunction> 
 	
 	
-	<cffunction name="clone" returntype="any" mixin="model">
-		<cfargument name="recurse" type="string" default="false" hint="Set to true to clone any models associated via models hasMany() or hasOne().">
+	<cffunction name="clone" returntype="any" mixin="model" hint="I create a duplicate of the current model and save it to the database.">
+		<cfargument name="recurse" type="string" default="false" hint="Set to true to clone any models associated via hasMany() or hasOne().">
 		<cfargument name="foreignKey" type="string" default="" hint="The foreign key in the child model to be cloned.">
 		<cfargument name="foreignKeyValue" type="any" default="" hint="The foreign key in the child model to be cloned.">
 		
 		<cfset var loc = {}>
 
+		<!--- loop over the properties of the current model and save them into a local struct --->
 		<cfloop collection="#this.properties()#" item="loc.key">
 			<cfif StructKeyExists(this,loc.key) and not ListFindNoCase("#this.primaryKey()#,createdAt,updatedAt,deletedAt",loc.key)>
 				<cfset loc.properties[loc.key] = this[loc.key]>
 			</cfif>
 		</cfloop>
+
+		<!--- if a foreign key and value has been provided then this is an associated model, set the keys --->
+		<cfif Len(arguments.foreignKey) and Len(arguments.foreignKeyValue)>
+			<cfset loc.properties[arguments.foreignKey] = arguments.foreignKeyValue>
+		</cfif>		
 		
+		<!--- create a new instance of the model in memory (not the DB yet) - note that callbacks are NOT run --->
 		<cfset loc.returnValue = $createObjectFromRoot(path=application.wheels.modelComponentPath, fileName=Capitalize(variables.wheels.class.modelName), method="$initModelObject", name=variables.wheels.class.modelName, properties=loc.properties, persisted=true)>
 		
+		<!--- run the beforeClone() callback --->
 		<cfif not StructKeyExists(variables.wheels.class.callbacks,"beforeClone") or loc.returnValue.$callback("beforeClone")>
-				
-			<cfif Len(arguments.foreignKey)>
-				<cfset loc.returnValue[arguments.foreignKey] = arguments.foreignKeyValue>
-			</cfif>		
 			
+			<!--- save the cloned model to the db --->
 			<cfif loc.returnValue.$create(parameterize=true)>
 				
+				<!--- run the afterClone() callback --->
 				<cfif StructKeyExists(variables.wheels.class.callbacks,"afterClone")>
 					<cfset loc.returnValue.$callback("afterClone")>
 				</cfif>
 								
 				<cfif arguments.recurse>				
+				
+					<!--- for each hasMany()/hasOne() association, get the child models and run clone() on them too --->
 					<cfloop collection="#variables.wheels.class.associations#" item="loc.key">
 						<cfif ListFindNoCase("hasMany,hasOne",variables.wheels.class.associations[loc.key].type)>
+							<cfset loc.arrChildren = Evaluate("this.#loc.key#(returnAs='objects')")>
+							<!--- we need to load the expanded association in order to get the foreign key --->
 							<cfset loc.association = this.$expandedAssociations(include=loc.key)>
 							<cfset loc.association = loc.association[1]>
-							<cfset loc.arrChildren = Evaluate("this.#loc.key#(returnAs='objects')")>
 							<cfif ArrayLen(loc.arrChildren)>
 								<cfloop from="1" to="#ArrayLen(loc.arrChildren)#" index="loc.i">
 									<cfset loc.arrChildren[loc.i].clone(recurse=true,foreignKey=loc.association.foreignKey,foreignKeyValue=loc.returnValue[this.primaryKey()])>
@@ -66,13 +75,16 @@
 					</cfloop>
 				</cfif>
 
+				<!--- return the cloned model --->
 				<cfreturn loc.returnValue>
 				
 			</cfif>
 					
 		</cfif>
 		
+		<!--- beforeClone() callback must have failed, so return false --->
 		<cfreturn false>
+		
 	</cffunction>
 	
 	
