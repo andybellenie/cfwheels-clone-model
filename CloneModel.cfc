@@ -47,26 +47,24 @@
 		<cfset loc.returnValue = $createObjectFromRoot(path=application.wheels.modelComponentPath, fileName=Capitalize(variables.wheels.class.modelName), method="$initModelObject", name=variables.wheels.class.modelName, properties=loc.properties, persisted=true)>
 		
 		<!--- run the beforeClone() callback --->
-		<cfif not StructKeyExists(variables.wheels.class.callbacks,"beforeClone") or loc.returnValue.$callback("beforeClone")>
+		<cfif loc.returnValue.$callback("beforeClone")>
 			
 			<!--- save the cloned model to the db --->
 			<cfif loc.returnValue.$create(parameterize=true)>
 				
 				<!--- run the afterClone() callback --->
-				<cfif StructKeyExists(variables.wheels.class.callbacks,"afterClone")>
-					<cfset loc.returnValue.$callback("afterClone")>
-				</cfif>
+				<cfset loc.returnValue.$callback("afterClone")>
 								
-				<cfif arguments.recurse>				
+				<cfif arguments.recurse>	
 				
 					<!--- for each hasMany()/hasOne() association, get the child models and run clone() on them too --->
 					<cfloop collection="#variables.wheels.class.associations#" item="loc.key">
 						<cfif ListFindNoCase("hasMany,hasOne",variables.wheels.class.associations[loc.key].type)>
 							<cfset loc.arrChildren = Evaluate("this.#loc.key#(returnAs='objects')")>
-							<!--- we need to load the expanded association in order to get the foreign key --->
-							<cfset loc.association = this.$expandedAssociations(include=loc.key)>
-							<cfset loc.association = loc.association[1]>
 							<cfif ArrayLen(loc.arrChildren)>
+								<!--- load the expanded association in order to get the foreign key --->
+								<cfset loc.association = this.$expandedAssociations(include=loc.key)>
+								<cfset loc.association = loc.association[1]>
 								<cfloop from="1" to="#ArrayLen(loc.arrChildren)#" index="loc.i">
 									<cfset loc.arrChildren[loc.i].clone(recurse=true,foreignKey=loc.association.foreignKey,foreignKeyValue=loc.returnValue[this.primaryKey()])>
 								</cfloop>
@@ -90,16 +88,46 @@
 	
 	<cffunction name="beforeClone" returntype="void" access="public" output="false" mixin="model" hint="Registers method(s) that should be called before an object is cloned.">
 		<cfargument name="methods" type="string" required="false" default="" hint="See documentation for @afterNew.">
-		<cfset variables.wheels.class.callbacks.beforeClone = ArrayNew(1)>
 		<cfset $registerCallback(type="beforeClone", argumentCollection=arguments)>
 	</cffunction>
 
 
 	<cffunction name="afterClone" returntype="void" access="public" output="false" mixin="model" hint="Registers method(s) that should be called after an object is cloned.">
 		<cfargument name="methods" type="string" required="false" default="" hint="See documentation for @afterNew.">
-		<cfset variables.wheels.class.callbacks.afterClone = ArrayNew(1)>
 		<cfset $registerCallback(type="afterClone", argumentCollection=arguments)>
 	</cffunction>	
 
+
+	<!--- override $registerCallback to create a new key for a new callback type --->
+	<cffunction name="$registerCallback" returntype="void" access="public" output="false">
+		<cfargument name="type" type="string" required="true">
+		<cfargument name="methods" type="string" required="true">
+		<cfscript>
+			var loc = {};
+			// new code
+			if (not StructKeyExists(variables.wheels.class.callbacks,arguments.type))
+				variables.wheels.class.callbacks[arguments.type] = ArrayNew(1);
+			// end new code
+			if (StructKeyExists(arguments, "method"))
+				arguments.methods = arguments.method;
+			loc.iEnd = ListLen(arguments.methods);
+			for (loc.i=1; loc.i <= loc.iEnd; loc.i++)
+				ArrayAppend(variables.wheels.class.callbacks[arguments.type], ListGetAt(arguments.methods, loc.i));
+		</cfscript>
+	</cffunction>
+	
+	<!--- override $callbacks() to return a blank array if the type doesn't exist --->
+	<cffunction name="$callbacks" returntype="any" access="public" output="false" hint="Returns all registered callbacks for this model (as a struct). Pass in the `type` argument to only return callbacks for that specific type (as an array).">
+		<cfargument name="type" type="string" required="false" default="" hint="See documentation for @$clearCallbacks.">
+		<cfscript>
+			if (Len(arguments.type))
+				{
+					if (StructKeyExists(variables.wheels.class.callbacks,arguments.type))
+						return variables.wheels.class.callbacks[arguments.type];
+					return ArrayNew(1);
+				}
+			return variables.wheels.class.callbacks;
+		</cfscript>
+	</cffunction>
 
 </cfcomponent>
