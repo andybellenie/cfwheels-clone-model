@@ -4,6 +4,8 @@
 	-------------------------------------------------------------------------------------
 	Title:		Clone Model Plugin CF Wheels (http://cfwheels.org)
 	
+	Version:	0.1 ALPHA
+	
 	Source:		http://github.com/andybellenie/CFWheels-Clone-Model
 	
 	Author:		Andy Bellenie
@@ -13,8 +15,15 @@
 
 	Usage:		Use clone() in your model to create a duplicate of it in the database. Set 
 				the 'recurse' argument to true to also create duplicates of all
-				associated models via the 'hasMany' or 'hasOne' association types. 
-					
+				associated models via the 'hasMany' or 'hasOne' association types.
+				
+				Example controller function:
+				
+				<cffunction name="clone">
+				   <cfset foo = model("foo").findByKey(params.key)>
+				   <cfset cloneOfFoo = foo.clone(recurse=true)>
+				</cffunction>
+							
 	-------------------------------------------------------------------------------------
 	------------------------------------------------------------------------------------>	
 	

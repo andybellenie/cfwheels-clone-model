@@ -6,11 +6,16 @@
   <li>clone([recurse=true/false])</li>
 </ul>
 
+<h2>New Callbacks</h2>
+<ul>
+  <li>beforeClone()</li>
+	<li>afterClone() </li>
+</ul>
 <h2>Recursion</h2>
-<p>If recurse is set to true then any related models set up as either a hasMany() or hasOne() association will also be cloned. If the association model also has associations then they too will be cloned, and so on until the process encounters a model without any associations. Warning - this can be quite server intensive for large and complex data models!</p>
-<h2>Usage </h2>
+<p>If recurse is set to true then any related models set up as either a hasMany() or hasOne() association will also be cloned. If the associated model also has associations then they too will be cloned, and so on until the process encounters a model without any associations.</p>
+<h2>Usage</h2>
 <pre>
-&lt;cffunction name="cloneMe"&gt;
+&lt;cffunction name="clone"&gt;
 &nbsp;&nbsp;&nbsp;&lt;cfset foo = model(&quot;foo&quot;).findByKey(params.key)&gt;
 &nbsp;&nbsp;&nbsp;&lt;cfset cloneOfFoo = foo.clone(recurse=true)&gt;
 &lt;/cffunction&gt;
