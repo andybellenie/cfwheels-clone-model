@@ -4,7 +4,7 @@
 	-------------------------------------------------------------------------------------
 	Title:		Clone Model Plugin CF Wheels (http://cfwheels.org)
 	
-	Version:	0.2 BETA
+	Version:	1.0
 	
 	Source:		http://github.com/andybellenie/CFWheels-Clone-Model
 	
@@ -28,9 +28,9 @@
 	------------------------------------------------------------------------------------>	
 	
 	<cffunction name="init" access="public" output="false" returntype="any">
-		<cfset this.version = "1.0.1,1.1" />
+		<cfset this.version = "1.0,1.0.2" />
 		<cfreturn this />
-	</cffunction> 
+	</cffunction>
 	
 	
 	<cffunction name="clone" returntype="any" access="public" output="false" hint="Inserts a copy of the object if it passes callbacks. Returns the new object if it was successfully saved to the database, `false` if not."
@@ -38,12 +38,14 @@
 		'
 			<!--- Inserts a copy of the user object into the database --->
 			<cfset user = model("User").findByKey(params.key)>
-			<cfset newUser = user.clone()>
+			<cfset clonedUser = user.clone([recurse=true/false])>
 		'
 		categories="model-object,crud" chapters="cloning-records" functions="">
-		<cfargument name="recurse" type="string" default="false" hint="Set to true to clone any models associated via hasMany() or hasOne().">
+		<cfargument name="recurse" type="string" default="false" hint="Set to `true` to clone any models associated via hasMany() or hasOne().">
 		<cfargument name="foreignKey" type="string" default="" hint="The foreign key in the child model to be cloned.">
 		<cfargument name="foreignKeyValue" type="any" default="" hint="The foreign key in the child model to be cloned.">
+		<cfargument name="validate" type="boolean" required="false" default="true" hint="Whether or not to run validation when cloning.">
+		<cfargument name="callbacks" type="boolean" required="false" default="true" hint="Whether or not to run callbacks when cloning.">
 		
 		<cfset var loc = {}>
 		
@@ -51,32 +53,28 @@
 			<cfset $throw(type="Wheels.CannotCloneNew", message="You cannot clone a new model.")>
 		<cfelse>
 			
-			<!--- loop over the properties of the current model and save them into a local struct --->
-			<cfloop collection="#this.properties()#" item="loc.key">
-				<cfif StructKeyExists(this,loc.key) and not ListFindNoCase("#this.primaryKey()#,createdAt,updatedAt,deletedAt",loc.key)>
-					<cfset loc.properties[loc.key] = this[loc.key]>
-				</cfif>
-			</cfloop>
-	
-			<!--- if a foreign key and value has been provided then this is an associated model, set the keys --->
+			<!--- create a new instance of the model in memory --->
+			<cfset loc.returnValue = Duplicate(this)>
+			
+			<!--- remove primary and logging keys --->
+			<cfset StructDelete(loc.returnValue,loc.returnValue.primaryKey())>
+			<cfset StructDelete(loc.returnValue,"createdAt")>
+			<cfset StructDelete(loc.returnValue,"updatedAt")>
+			<cfset StructDelete(loc.returnValue,"deletedAt")>
+			
+			<!--- if a foreign key and value has been provided then this is an associated model --->
 			<cfif Len(arguments.foreignKey) and Len(arguments.foreignKeyValue)>
-				<cfset loc.properties[arguments.foreignKey] = arguments.foreignKeyValue>
+				<cfset loc.returnValue[arguments.foreignKey] = arguments.foreignKeyValue>
 			</cfif>
 			
-			<!--- create a new instance of the model in memory - note: built-in cfwheels callbacks are NOT run --->
-			<cfset loc.returnValue = $createInstance(properties=loc.properties, persisted=false)>
-			
-			<!--- run the beforeClone() callback on the new model --->
-			<cfif loc.returnValue.$callback("beforeClone")>
+			<cfif loc.returnValue.$callback(type="beforeValidationOnClone", execute=arguments.callbacks) and loc.returnValue.$validate("onSave") and loc.returnValue.$callback(type="beforeClone", execute=arguments.callbacks)>
 				
 				<!--- save the cloned model to the db --->
 				<cfif loc.returnValue.$create(parameterize=true)>
 					
+					<cfset loc.returnValue.$callback(type="afterClone", execute=arguments.callbacks)>
 					<cfset loc.returnValue.$updatePersistedProperties()>
-					
-					<!--- run the afterClone() callback --->
-					<cfset loc.returnValue.$callback("afterClone")>
-									
+				
 					<cfif arguments.recurse>
 					
 						<!--- for each hasMany()/hasOne() association, get the associated models and clone them too --->
@@ -94,9 +92,6 @@
 							</cfif>
 						</cfloop>
 					</cfif>
-	
-					<!--- return the cloned model --->
-					<cfreturn loc.returnValue>
 					
 				</cfif>
 						
@@ -104,22 +99,35 @@
 		
 		</cfif>
 		
-		<!--- beforeClone() callback must have failed, so return false --->
-		<cfreturn false>
-		
+		<cfreturn loc.returnValue>
 	</cffunction>
 	
 		
+	<cffunction name="beforeValidationOnClone" returntype="void" access="public" output="false" mixin="model" hint="Registers method(s) that should be called before an object is validation upon cloning.">
+		<cfargument name="methods" type="string" required="false" default="" hint="See documentation for @afterNew.">
+		<cfif not StructKeyExists(variables.wheels.class.callbacks,"beforeValidationOnClone")>
+			<cfset variables.wheels.class.callbacks.beforeValidationOnClone = ArrayNew(1)>
+		</cfif>
+		<cfset $registerCallback(type="beforeValidationOnClone", argumentCollection=arguments)>
+	</cffunction>
+
+
 	<cffunction name="beforeClone" returntype="void" access="public" output="false" mixin="model" hint="Registers method(s) that should be called before an object is cloned.">
 		<cfargument name="methods" type="string" required="false" default="" hint="See documentation for @afterNew.">
+		<cfif not StructKeyExists(variables.wheels.class.callbacks,"beforeClone")>
+			<cfset variables.wheels.class.callbacks.beforeClone = ArrayNew(1)>
+		</cfif>
 		<cfset $registerCallback(type="beforeClone", argumentCollection=arguments)>
 	</cffunction>
 
 
 	<cffunction name="afterClone" returntype="void" access="public" output="false" mixin="model" hint="Registers method(s) that should be called after an object is cloned.">
 		<cfargument name="methods" type="string" required="false" default="" hint="See documentation for @afterNew.">
+		<cfif not StructKeyExists(variables.wheels.class.callbacks,"afterClone")>
+			<cfset variables.wheels.class.callbacks.afterClone = ArrayNew(1)>
+		</cfif>
 		<cfset $registerCallback(type="afterClone", argumentCollection=arguments)>
 	</cffunction>	
-
+	
 
 </cfcomponent>

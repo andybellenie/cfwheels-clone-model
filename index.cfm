@@ -1,25 +1,25 @@
-<h1>Clone Model 0.2 BETA </h1>
+<h1>Clone Model 1.0</h1>
 <h3>By Andy Bellenie</h3>
-<p>This plugin allows rapid duplication of existing model objects and their associations.</p>
-<h2>New Methods</h2>
+<p>This plugin allows simple duplication of existing model objects and their associations.</p>
+<h2>New Model Methods</h2>
 <ul>
-  <li>clone([recurse=true/false])</li>
+  <li>clone([recurse=true/false]) - returns the clone as an object</li>
 </ul>
 
 <h2>New Callbacks</h2>
+<p>Wheels standard callbacks are not run during the cloning process,	so this plugin provides three new callback methods.</p>
 <ul>
-  <li>beforeClone()</li>
+  <li>beforeValidationOnClone()</li>
+	<li>beforeClone()</li>
 	<li>afterClone() </li>
 </ul>
 <h2>Recursion</h2>
-<p>If recurse is set to true then any related models configured via a hasMany() or hasOne() association will also be cloned. If the associated model also has associations then they too will be cloned, and so on until the process encounters a model without any associations. Treat with caution as large models with many associations could be very server-intensive to clone.</p>
-<h2>Planned enhancements</h2>
-<p>The next version of this plugin will tie directly into Wheels SQL generation and run INSERT xxx SELECT xx statements as performance would be greatly improved. </p>
+<p>If recurse is set to true then any related models set up as either a hasMany() or hasOne() association will also be cloned. If the associated model also has associations then they too will be cloned, and so on until the process encounters a model without any associations.</p>
 <h2>Usage</h2>
 <pre>
 &lt;cffunction name="clone"&gt;
-&nbsp;&nbsp;&nbsp;&lt;cfset foo = model(&quot;foo&quot;).findByKey(params.key)&gt;
-&nbsp;&nbsp;&nbsp;&lt;cfset cloneOfFoo = foo.clone(recurse=true)&gt;
+&nbsp;&nbsp;&nbsp;&lt;cfset objFoo = model(&quot;foo&quot;).findByKey(params.key)&gt;
+&nbsp;&nbsp;&nbsp;&lt;cfset objCloneOfFoo = foo.clone(recurse=true)&gt;
 &lt;/cffunction&gt;
 </pre>
 
