@@ -127,7 +127,18 @@
 			<cfset variables.wheels.class.callbacks.afterClone = ArrayNew(1)>
 		</cfif>
 		<cfset $registerCallback(type="afterClone", argumentCollection=arguments)>
-	</cffunction>	
+	</cffunction>
+	
+	
+	<!--- override internal $callback() function to allow the new callback types --->
+	<cffunction name="$callback" returntype="boolean" access="public" output="false" mixin="model">
+		<cfargument name="type" type="string" required="true">	
+		<cfset var coreCallBackMethod = core.$callback>
+		<cfif not StructKeyExists(variables.wheels.class.callbacks,arguments.type)>
+			<cfset variables.wheels.class.callbacks[arguments.type] = ArrayNew(1)>
+		</cfif>
+		<cfreturn coreCallBackMethod(argumentCollection=arguments)>
+	</cffunction>
 	
 
 </cfcomponent>
