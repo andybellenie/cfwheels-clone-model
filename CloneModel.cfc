@@ -17,6 +17,9 @@
 				the 'recurse' argument to true to also create duplicates of all
 				associated models via the 'hasMany' or 'hasOne' association types.
 				
+				If you wish to skip an associated model during recursion, include it's name
+				in the 'exclude' argument.
+				
 				Example controller function:
 				
 				<cffunction name="clone">
@@ -28,7 +31,7 @@
 	------------------------------------------------------------------------------------>	
 	
 	<cffunction name="init" access="public" output="false" returntype="any">
-		<cfset this.version = "1.0,1.0.2" />
+		<cfset this.version = "1.0,1.0.1,1.0.2,1.0.3" />
 		<cfreturn this />
 	</cffunction>
 	
@@ -38,26 +41,34 @@
 		'
 			<!--- Inserts a copy of the user object into the database --->
 			<cfset user = model("User").findByKey(params.key)>
-			<cfset clonedUser = user.clone([recurse=true/false])>
+			<cfset clonedUser = user.clone([recurse=true/false],[exclude="permissions"])>
 		'
 		categories="model-object,crud" chapters="cloning-records" functions="">
 		<cfargument name="recurse" type="string" default="false" hint="Set to `true` to clone any models associated via hasMany() or hasOne().">
+		<cfargument name="exclude" type="string" required="false" default="" hint="A list of associations to exclude during recursion.">
 		<cfargument name="foreignKey" type="string" default="" hint="The foreign key in the child model to be cloned.">
 		<cfargument name="foreignKeyValue" type="any" default="" hint="The foreign key in the child model to be cloned.">
 		<cfargument name="validate" type="boolean" required="false" default="true" hint="Whether or not to run validation when cloning.">
-		<cfargument name="callbacks" type="boolean" required="false" default="true" hint="Whether or not to run callbacks when cloning.">
 		
 		<cfset var loc = {}>
 		
+		<cfif not StructKeyExists(request.wheels, "transactionOpen")>
+			<cfset request.wheels.transactionOpen = true>
+		</cfif>
+		
 		<cfif this.isNew()>
+		
 			<cfset $throw(type="Wheels.CannotCloneNew", message="You cannot clone a new model.")>
+		
 		<cfelse>
 			
 			<!--- create a new instance of the model in memory --->
 			<cfset loc.returnValue = Duplicate(this)>
 			
 			<!--- remove primary and logging keys --->
-			<cfset StructDelete(loc.returnValue,loc.returnValue.primaryKey())>
+			<cfloop list="#loc.returnValue.primaryKey()#" index="loc.key">
+				<cfset StructDelete(loc.returnValue,loc.key)>
+			</cfloop>
 			<cfset StructDelete(loc.returnValue,"createdAt")>
 			<cfset StructDelete(loc.returnValue,"updatedAt")>
 			<cfset StructDelete(loc.returnValue,"deletedAt")>
@@ -67,39 +78,67 @@
 				<cfset loc.returnValue[arguments.foreignKey] = arguments.foreignKeyValue>
 			</cfif>
 			
-			<cfif loc.returnValue.$callback(type="beforeValidationOnClone", execute=arguments.callbacks) and loc.returnValue.$validate("onSave") and loc.returnValue.$callback(type="beforeClone", execute=arguments.callbacks)>
-				
-				<!--- save the cloned model to the db --->
-				<cfif loc.returnValue.$create(parameterize=true)>
-					
-					<cfset loc.returnValue.$callback(type="afterClone", execute=arguments.callbacks)>
-					<cfset loc.returnValue.$updatePersistedProperties()>
-				
-					<cfif arguments.recurse>
-					
-						<!--- for each hasMany()/hasOne() association, get the associated models and clone them too --->
-						<cfloop collection="#variables.wheels.class.associations#" item="loc.key">
-							<cfif ListFindNoCase("hasMany,hasOne",variables.wheels.class.associations[loc.key].type)>
-								<cfset loc.arrChildren = Evaluate("this.#loc.key#(returnAs='objects')")>
-								<cfif ArrayLen(loc.arrChildren)>
-									<!--- load the expanded association in order to get the foreign key --->
-									<cfset loc.association = this.$expandedAssociations(include=loc.key)>
-									<cfset loc.association = loc.association[1]>
-									<cfloop from="1" to="#ArrayLen(loc.arrChildren)#" index="loc.i">
-										<cfset loc.arrChildren[loc.i].clone(recurse=true,foreignKey=loc.association.foreignKey,foreignKeyValue=loc.returnValue[this.primaryKey()])>
-									</cfloop>
-								</cfif>
-							</cfif>
-						</cfloop>
+			<cfif request.wheels.transactionOpen>
+				<cfif loc.returnValue.$callback(type="beforeValidationOnClone") and loc.returnValue.$validate("onSave") and loc.returnValue.$callback(type="beforeClone") and loc.returnValue.$create(parameterize=true)>
+					<cfif arguments.recurse> <!--- for each hasMany()/hasOne() association, get the associated models and clone them too --->
+						<cfset $cloneAssociations(loc.returnValue, arguments.exclude)>
 					</cfif>
-					
+					<cfif loc.returnValue.$callback(type="afterClone")>
+						<cfset loc.returnValue.$updatePersistedProperties()>
+					</cfif>
 				</cfif>
-						
+			<cfelse>
+				<cfset request.wheels.transactionOpen = true>
+				<cftransaction action="begin">
+					<cfif loc.returnValue.$callback(type="beforeValidationOnClone") and loc.returnValue.$validate("onSave") and loc.returnValue.$callback(type="beforeClone") and loc.returnValue.$create(parameterize=true)>
+						<cfif arguments.recurse> <!--- for each hasMany()/hasOne() association, get the associated models and clone them too --->
+							<cfset $cloneAssociations(loc.returnValue, arguments.exclude)>
+						</cfif>
+						<cfif loc.returnValue.$callback(type="afterClone")>
+							<cfset loc.returnValue.$updatePersistedProperties()>
+							<cftransaction action="commit" />
+						<cfelse>
+							<cftransaction action="rollback" />
+						</cfif>
+					<cfelse>
+						<cftransaction action="rollback" />
+					</cfif>
+				</cftransaction>
+				<cfset request.wheels.transactionOpen = false>
 			</cfif>
-		
+
 		</cfif>
-		
+
 		<cfreturn loc.returnValue>
+	</cffunction>
+	
+	
+	<cffunction name="$cloneAssociations" returntype="any" access="public" output="false" mixin="model">
+		<cfargument name="obj" type="any" required="true" hint="I am the object for whom associations are to be cloned.">
+		<cfargument name="exclude" type="string" required="false" default="" hint="A list of associations to exclude during recursion.">
+		<cfset var loc = {}>
+		<cfset loc.objectAssociations = arguments.obj.$getAssociations()>
+		<cfloop collection="#loc.objectAssociations#" item="loc.key">
+			<cfif ListFindNoCase("hasMany,hasOne", loc.objectAssociations[loc.key].type) and not ListFindNoCase(arguments.exclude, loc.key)>
+				<cfset loc.expandedAssociation = arguments.obj.$expandedAssociations(include=loc.key)> <!--- load the expanded association in order to get the foreign key --->
+				<cfset loc.expandedAssociation = loc.expandedAssociation[1]>
+				<cfset loc.where = $keyWhereString(properties=loc.expandedAssociation.foreignKey, keys=arguments.obj.$getKeys())>
+				<cfset loc.arrChildren = model(loc.expandedAssociation.class).findAll(where=loc.where, returnAs="objects")>
+				<cfloop array="#loc.arrChildren#" index="loc.objChild">
+					<cfset loc.objChild.clone(recurse=true, foreignKey=loc.expandedAssociation.foreignKey, foreignKeyValue=arguments.obj[arguments.obj.primaryKey()], exclude=arguments.exclude)>
+				</cfloop>
+			</cfif>
+		</cfloop>
+	</cffunction>
+	
+	
+	<cffunction name="$getAssociations" returntype="struct" access="public" output="false" mixin="model">
+		<cfreturn variables.wheels.class.associations>
+	</cffunction>
+
+
+	<cffunction name="$getKeys" returntype="string" access="public" output="false" mixin="model">
+		<cfreturn variables.wheels.class.keys>
 	</cffunction>
 	
 		
