@@ -54,9 +54,12 @@
 		
 		<cfset loc.clone = Duplicate(this)>
 		
-		<!--- delete primary keys--->
-		<cfloop list="#this.primaryKeys()#" index="loc.i">
-			<cfset StructDelete(loc.clone, loc.i)>
+		<!--- delete identity columns --->
+		<cfdbinfo type="columns" table="#this.tableName()#" datasource="#variables.wheels.class.connection.datasource#" name="loc.properties">
+		<cfloop query="loc.properties">
+			<cfif loc.properties.is_primaryKey and loc.properties.type_name contains "identity">
+				<cfset StructDelete(loc.clone, loc.properties.column_name)>
+			</cfif>
 		</cfloop>
 		
 		<!--- set any changed properties into the clone --->
@@ -101,14 +104,9 @@
 							</cfif>
 
 							<cfloop array="#loc.children#" index="loc.child">
-	
-								<!--- pass primary and foreign keys as arguments to the $clone function --->
+
+								<!--- set the new foreign key --->								
 								<cfset arguments[loc.expandedAssociation.foreignKey] = loc.clone.key()>
-								<!--- <cfloop list="#loc.child.primaryKey()#" index="loc.thisKey">
-									<cfif loc.thisKey neq loc.expandedAssociation.foreignKey>
-										<cfset arguments[loc.thisKey] = loc.child[loc.thisKey]>
-									</cfif>
-								</cfloop> --->
 								
 								<!--- clone the child --->
 								<cfif not loc.child.$clone(argumentCollection=arguments)>
