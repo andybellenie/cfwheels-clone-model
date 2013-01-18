@@ -9,7 +9,7 @@
 	
 	<!--- PUBLIC METHODS --->
 	
-	<cffunction name="clone" returntype="any" mixin="model" hint="I create a duplicate of the current model and save it to the database.">
+	<cffunction name="clone" returntype="boolean" mixin="model" hint="I create a duplicate of the current model and save it to the database.">
 		<cfargument name="recurse" type="string" default="false" hint="Set to true to clone any models associated via hasMany() or hasOne().">
 		<cfargument name="parameterize" type="any" default="true" hint="See documentation for @findAll.">
 		<cfargument name="validate" type="boolean" default="true" hint="See documentation for @save.">
