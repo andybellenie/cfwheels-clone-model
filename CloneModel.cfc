@@ -52,7 +52,7 @@
 		
 		<cfset var loc = {}>
 		
-		<cfset loc.clone = Duplicate(this)>
+		<cfset loc.clone = this.new(properties=this.properties())>
 		
 		<!--- delete identity columns --->
 		<cfdbinfo type="columns" table="#this.tableName()#" datasource="#variables.wheels.class.connection.datasource#" name="loc.properties">
